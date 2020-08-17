@@ -61,12 +61,3 @@ if __name__=='__main__':
     model.train(stop_loss=0.0001, max_iter=100000)
     model.save(path+'model_1.pkl', path+'result_1.txt')
     print(model.test_accuracy)
-    '''model.path_selection(threshold=0.01)
-    model.retrain()
-    model.save(path+'model_2.pkl', path+'result_2.txt')
-    model.path_selection(threshold=0.1)
-    model.retrain()
-    model.save(path+'model_3.pkl', path+'result_3.txt')
-    model.path_selection(threshold=0.1)
-    model.retrain()
-    model.save(path+'model_4.pkl', path+'result_4.txt')'''
