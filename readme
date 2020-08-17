@@ -1,0 +1,5 @@
+This the reproduction of PRA algorithm.
+The GraphDFS is used to generate metapaths for positive samples.
+The GetFeature is to used to generate features for all the samples through metapaths.
+The TrainData and data_utils using Torch to build a classifier.
+The TrainModel using sklearn to build a classifier.
