@@ -1,9 +1,6 @@
-import io, os, json
-import numpy as np
-import torch
+import os
 from pathlib import Path
 from sklearn.model_selection import StratifiedKFold
-from .graphdataset import GraphDataset
 from .raw_graph_utils import parse_fb15k237_data, parse_wn18rr_data, parse_yago310_data
 from .raw_graph_utils import py2nxGraphStyle, py2nxGraph
 from .Param import Param
