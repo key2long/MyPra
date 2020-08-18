@@ -120,11 +120,6 @@ class FB15k237Manager(GraphDatasetManager):
                                    fact_list=fact_list)
         return nx_graph
 
-        # geo_graph = self._to_Geo_sty_graph(nx_graph)
-
-    def _to_Geo_sty_graph(self, nx_graph):
-        a = 1
-        return a
 
     def getTrainQueries(self):
         """
