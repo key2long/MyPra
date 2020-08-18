@@ -19,10 +19,11 @@ class Graph:
         self.end_node = ''
         self.relation_paths = []
 
-    def set_init_state(self, begin_node, end_node, max_length):
+    def set_init_state(self, begin_node, end_node, max_length, relation):
         self.begin_node = begin_node
         self.end_node = end_node
         self.max_length = max_length
+        self.relation = relation #设置一个flag，去除头尾直接相连的path
         self.path = [('root', self.begin_node)]  # 存储两节点之间的某条路径[('root', self.begin_node), （relation， next_node)....]
         self.all_path = []  # 两个正样本节点之间，可能存在多条路径，dfs的时候我们将所有路径进行存储[('root', self.begin_node), (relation， next_node)....]
         self.relation_paths = []  # 将all_path中的所有relation提取出来
@@ -39,10 +40,13 @@ class Graph:
     def dfs(self, begin_node):
         if begin_node == self.end_node:
             tem = []
-            for item in self.path:
-                tem.append(item)
-            self.all_path.append(tem)
-            return
+            if len(self.path) == 2 and self.path[1][0] == self.relation: # 判断
+                return
+            else:
+                for item in self.path:
+                    tem.append(item)
+                self.all_path.append(tem)
+                return
         try:
             if self.nodes[begin_node].adjust_info is None:
                 return
@@ -73,6 +77,7 @@ if __name__ == '__main__':
     data_path = './Nell995_data/graph.txt'
     train_path = './Nell995_data/train.pairs'
     max_length = 4
+    relation = 'worksfor' #每种关系都需要不同的设置
 
     with open(data_path, 'r') as f:
         datas = f.readlines()
@@ -89,10 +94,11 @@ if __name__ == '__main__':
             if flag == '+':
                 begin_node = node1
                 end_node = node2
-                kg.set_init_state(begin_node, end_node, max_length)  # 每次循环初始化参数
+                kg.set_init_state(begin_node, end_node, max_length, relation)  # 每次循环初始化参数
                 print('第%d节点对是正样本，下面开始进行搜索' % n)
                 kg.dfs(begin_node)
                 kg.extract_relation_path()  # 一次dfs找出的某对节点下所有路径
+                
                 paths.extend(kg.relation_paths)  # 进行extend，[node1,node2之间的所有关系路径,.....]
             else:
                 continue
