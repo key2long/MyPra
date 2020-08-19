@@ -42,4 +42,3 @@ if __name__ == '__main__':
             loss.backward()
             optimizer.step()
             train_loss_sum.append(loss.item())
-
