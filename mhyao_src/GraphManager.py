@@ -1,6 +1,5 @@
 import os
 from pathlib import Path
-from sklearn.model_selection import StratifiedKFold
 from .raw_graph_utils import parse_fb15k237_data, parse_wn18rr_data, parse_yago310_data
 from .raw_graph_utils import py2nxGraphStyle, py2nxGraph
 from .Param import Param
@@ -21,7 +20,6 @@ class GraphDatasetManager:
                  data_dir: str = None,
                  train_val_test: str = None,
                  model_asses_k: int = None,
-                 split_mode=StratifiedKFold,
                  holdout_test_size: float = None):
         graph_config_pt = self.GDMHyperParam(config_path=config_path)
         self.root_dir = Path(graph_config_pt.ifInConfig(param_dict=dict(data_dir=data_dir),
@@ -50,9 +48,6 @@ class GraphDatasetManager:
         # self.geo_sty_graphs = GraphDataset(torch.load(self.processed_dir / f"{self.name}.pt"))
 
     def _process(self):
-        raise NotImplementedError
-
-    def getTrainQueries(self):
         raise NotImplementedError
 
     def saveStandGraph(self):
@@ -100,43 +95,7 @@ class FB15k237Manager(GraphDatasetManager):
                                         self.raw_dir)
         self.entity_dict = mid_nid_dict
         self.fact_list = fact_list
-        # 保存nid_mid_dict和rid_relation_dict
-        nid_mid_path = self.processed_dir / f"{self.name+'_'+self.train_val_test}.mid"
-        rid_relation_path = self.processed_dir / f"{self.name+'_'+self.train_val_test}.relation"
-        try:
-            with open(nid_mid_path, "w") as nidf, open(rid_relation_path, "w") as ridf:
-                for nid in range(len(nid_mid_dict)):
-                    nidf.write(nid_mid_dict[nid] + "\n")
-                for rid in range(len(rid_relation_dict)):
-                    tmp_dict = rid_relation_dict[rid]  # {"relation": str(relation), "count": int(count)}
-                    ridf.write(tmp_dict["relation"] + "\t" + str(tmp_dict["count"]) + "\n")
-            nidf.close()
-            ridf.close()
-        except:
-            print(f"上述try模块的某行出现了错误")
-
         # 将py_style的知识图谱转化为networkx_style
         nx_graph = py2nxGraphStyle(mid_nid_dict=mid_nid_dict,
                                    fact_list=fact_list)
         return nx_graph
-
-
-    def getTrainQueries(self):
-        """
-        从self.nx_graph生成queries_pt.
-        数据格式为:
-        queries_pt = {"relation": dict<head_mid: Query>}
-        其中Query = {"good": [tail_mid], "bad": []}
-        :return: queries_pt
-        """
-        queries_pt = {}
-        for (head_mid, tail_mid, relation) in self.nx_graph.edges.data():
-            name_relation = relation["relation"]
-            if name_relation not in queries_pt:
-                queries_pt[name_relation] = {head_mid: [tail_mid]}
-            else:
-                if head_mid not in queries_pt[name_relation]:
-                    queries_pt[name_relation][head_mid] = [tail_mid]
-                else:
-                    queries_pt[name_relation][head_mid].append(tail_mid)
-        return queries_pt
