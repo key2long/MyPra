@@ -1,6 +1,6 @@
 from utils.utils import one_hot
 from collections import defaultdict
-from src.nxGraph import NxGraph
+from mhyao_src.nxGraph import NxGraph
 from pathlib import Path
 import re
 
