@@ -1,5 +1,3 @@
-from utils.utils import one_hot
-from collections import defaultdict
 from mhyao_src.nxGraph import NxGraph
 from pathlib import Path
 import re
@@ -164,6 +162,7 @@ def parse_fb15k237_data(name, train_val_test, raw_dir):
         print(f"上述try模块的某行出现了错误")
 
     return mid_nid_dict, nid_mid_dict, relation_rid_dict, rid_relation_dict, fact_list
+
 
 def py2nxGraphStyle(mid_nid_dict, fact_list):
     """
