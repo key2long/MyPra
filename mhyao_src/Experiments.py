@@ -1,4 +1,4 @@
-from .GraphManager import GraphDatasetManager
+from .GraphManager import RawGraphManager
 import operator
 
 
