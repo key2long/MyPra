@@ -20,9 +20,10 @@ class Graph:
         self.end_node = ''
         self.relation_paths = []
 
-    def set_init_state(self, begin_node, end_node, max_length):
+    def set_init_state(self, begin_node, end_node, max_length, relation):
         self.begin_node = begin_node
         self.end_node = end_node
+        self.relation = relation
         self.max_length = max_length
         self.path = [('root', self.begin_node)]  # 存储两节点之间的某条路径[('root', self.begin_node), （relation， next_node)....]
         self.all_path = []  # 两个正样本节点之间，可能存在多条路径，dfs的时候我们将所有路径进行存储[('root', self.begin_node), （relation， next_node)....]
@@ -40,10 +41,13 @@ class Graph:
     def dfs(self, begin_node):
         if begin_node == self.end_node:
             tem = []
-            for item in self.path:
-                tem.append(item)
-            self.all_path.append(tem)
-            return
+            if len(self.path) == 2 and self.path[1][0] == self.relation:
+                return
+            else:
+                for item in self.path:
+                    tem.append(item)
+                self.all_path.append(tem)
+                return
         try:
             if self.nodes[begin_node].adjust_info is None:
                 return
