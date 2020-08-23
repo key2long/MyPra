@@ -27,6 +27,9 @@ class GetFeature:
                 temp = Node(node1_name)
                 self.nodes[node1_name] = temp
             self.nodes[node1_name].add(relation, node2_name)
+            if node2_name not in self.nodes.keys():
+                temp = Node(node2_name)
+                self.nodes[node2_name] = temp
 
     def _prob(self, begin, end, relation_path):
         prob = 0
@@ -56,12 +59,12 @@ class GetFeature:
                 continue
             else:
                 node2 = node2.replace('thing$', '')
-                if flag == '1':
+                if flag == 1:
                     self.data_dict_feature[node1, node2].append(1)
                 else:
                     self.data_dict_feature[node1, node2].append(0)
                 for path in self.metapath:
                     tem_prob = self._prob(node1, node2, path)
                     self.data_dict_feature[node1, node2].append(tem_prob)
-            print('第%d个数据结束\n' % i)
+            # print('第%d个数据结束\n' % i)
         return self.data_dict_feature
