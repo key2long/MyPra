@@ -1,7 +1,7 @@
 import os
 from tqdm import tqdm
 from pathlib import Path
-from collections import Counter
+from collections import Counter, defaultdict
 from multiprocessing import Process, Pool
 from .raw_graph_utils import parse_fb15k237_data, parse_wn18rr_data, parse_yago310_data
 
@@ -96,8 +96,10 @@ class ProcessedGraphManager:
     总结而言,合成一个类收益很小,麻烦很多,可读性很差.
     """
     def __init__(self,
-                 file_path: str):
+                 file_path: str,
+                 if_add_reverse_relation: bool = False):
         self.file_path = file_path
+        self.reverse_relation = if_add_reverse_relation
         if os.path.isfile(self.file_path) is False:
             print(f"找不到文件{self.file_path}.")
         else:
@@ -106,6 +108,7 @@ class ProcessedGraphManager:
         self.fact_list = []
         self.entity_set = set()
         self.relation_set = set()
+        self.relation_pos_sample_dict = defaultdict(list)
 
         self.begin_node = ""
         self.end_node = ""
@@ -147,10 +150,18 @@ class ProcessedGraphManager:
                 tail_mid = fact[2]
                 relation = fact[1]
                 self.add_graph_node(head_mid, relation, tail_mid)
-                self.fact_list.append([head_mid, relation, tail_mid])
+                self.fact_list.append([head_mid, tail_mid, relation])
                 self.entity_set.add(head_mid)
                 self.entity_set.add(tail_mid)
                 self.relation_set.add(relation)
+                self.relation_pos_sample_dict[relation].append([head_mid, tail_mid])
+                if self.reverse_relation is True:
+                    relation = "_" + relation
+                    self.relation_set.add(relation)
+                    self.relation_pos_sample_dict[relation].append([head_mid, tail_mid])
+                    self.add_graph_node(tail_mid, relation, head_mid)
+                    self.fact_list.append([tail_mid, head_mid, relation])
+
         f.close()
         self._report_statistic_info()
 
@@ -159,14 +170,16 @@ class ProcessedGraphManager:
         output_info = f"开始合并:"
         print(output_info)
         for fact in tqdm(graph_pt.fact_list):
-            temp = (fact[1], fact[2])
+            temp = (fact[2], fact[1])
             if temp not in self.graph_nodes[fact[0]].neighbours_list:
                 content = fact.copy()
                 self.fact_list.append(content)
                 self.entity_set.add(content[0])
-                self.entity_set.add(content[2])
-                self.relation_set.add(content[1])
-                self.add_graph_node(content[0], content[1], content[2])
+                self.entity_set.add(content[1])
+                self.relation_set.add(content[2])
+                self.add_graph_node(head_mid=content[0],
+                                    relation=content[2],
+                                    tail_mid=content[1])
         self._report_statistic_info()
 
     def entity_set_difference(self, graph_pt):
@@ -224,13 +237,15 @@ class ProcessedGraphManager:
                          begin_node: str,
                          end_node: str,
                          path: list,
-                         relation_of_blocked_edge: str,
+                         relation_of_blocked_edge: list,
                          all_paths: list,
                          max_depth: int):
         if begin_node == end_node:
             tem = []
-            if len(path) == 2 and path[1][0] == relation_of_blocked_edge:
-                return
+            if len(path) == 2:
+                for blocked in relation_of_blocked_edge:
+                    if path[1][0] == blocked:
+                        return
             else:
                 for item in path:
                     tem.append(item)
@@ -259,15 +274,23 @@ class ProcessedGraphManager:
                            part_of_fact_list: list):
         part_of_all_meta_paths = []
         for fact in tqdm(part_of_fact_list):
-            query_relation = fact[1]
+            query_relation = fact[2]
             # self.set_dfs_search_state(begin_node=fact[0],
             #                           end_node=fact[2],
             #                           max_depth=self.max_depth,
             #                           relation_of_blocked_edge=query_relation)
             begin_node = fact[0]
-            end_node = fact[2]
+            end_node = fact[1]
             max_depth = self.max_depth
-            relation_of_blocked_edge = query_relation
+
+            if self.reverse_relation is True:
+                if query_relation[0] != "_":
+                    relation_of_blocked_edge = [query_relation, "_" + query_relation]
+                else:
+                    relation_of_blocked_edge = [query_relation, query_relation[1:]]
+            else:
+                relation_of_blocked_edge = [query_relation]
+
             path = [("root", begin_node)]
             all_paths = []
             meta_paths = []
@@ -279,7 +302,7 @@ class ProcessedGraphManager:
                                   max_depth=max_depth)
             # self.extract_relation_path()
             for tmp_path in all_paths:
-                tem = relation_of_blocked_edge + "\t"
+                tem = relation_of_blocked_edge[0] + "\t"
                 for i in tmp_path:
                     tem = tem + i[0] + "\t"
                 meta_paths.append(tem)
