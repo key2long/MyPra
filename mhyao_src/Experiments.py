@@ -34,7 +34,7 @@ class GraphExperiments:
             entity_rank_dict = {}
             for entity in self.query_graph_pt.entity_set:
                 score = self.model_pt.rank_score(head_mid=triple[0],
-                                                 relation=triple[1],
+                                                 relation=triple[2],
                                                  tail_mid=entity)
                 entity_rank_dict[(triple[0], triple[1], entity)] = score
             rank_tail_sorted = sorted(entity_rank_dict.items(), key=operator[1], reverse=False)
@@ -65,14 +65,18 @@ class Validation(GraphExperiments):
 
 class Test(GraphExperiments):
     def __init__(self,
-                 model_pt: LogisticRegression,
                  query_graph_pt: ProcessedGraphManager,
                  predict_graph_pt: ProcessedGraphManager,
-                 hit_range):
+                 hit_range,
+                 model_pt: LogisticRegression = None):
         super().__init__(model_pt=model_pt,
                          query_graph_pt=query_graph_pt,
                          predict_graph_pt=predict_graph_pt)
         self.hit_range = hit_range
+
+    def find_best_results(self,
+                          results_list):
+        return results_list[0]
 
 
 class PRATrain(GraphExperiments):
@@ -98,9 +102,13 @@ class PRATrain(GraphExperiments):
                 query_relation = data[1]
                 meta_path = data[3:]
                 self.relation_meta_paths[query_relation].append(meta_path)
+        self.query_graph_pt.relation_meta_paths = self.relation_meta_paths
 
     def get_neg_pairs(self):
         return ProcessedGraphManager(file_path=self.neg_pairs_path).fact_list
+
+    def load_model_from_file(self):
+        pass
 
     def train_this_hold_out(self):
         print(f"超参alpha为{self.alpha},开始训练{self.query_graph_pt.file_path}中的三元组:")
@@ -130,14 +138,14 @@ class PRATrain(GraphExperiments):
             pra_data = PRAData(data_feature_dict=data_feature_dict,
                                metapath_len=metapath_len)
             train_loader = DataLoader(pra_data, batch_size=batch_size)
-            model = LogisticRegression(input_size=input_size, num_classes=1)
+            self.model = LogisticRegression(input_size=input_size, num_classes=1)
             criterion = nn.BCELoss()
-            optimizer = optim.SGD(model.parameters(), lr=learning_rate)
+            optimizer = optim.SGD(self.model.parameters(), lr=learning_rate)
 
             for epoch in range(epoch_num):
                 for i, (path_feature, label) in enumerate(train_loader):
                     optimizer.zero_grad()
-                    outputs = model(path_feature)
+                    outputs = self.model(path_feature)
                     loss = criterion(outputs, label)
                     loss.backward()
                     optimizer.step()
@@ -149,4 +157,4 @@ class PRATrain(GraphExperiments):
             if os.path.exists(model_save_path) is False:
                 os.makedirs(model_save_path)
             model_save_path = model_save_path / (relation.replace("/", '') + f"_{self.alpha}_model.pkl")
-            torch.save(model.state_dict(), model_save_path)
+            torch.save(self.model.state_dict(), model_save_path)
