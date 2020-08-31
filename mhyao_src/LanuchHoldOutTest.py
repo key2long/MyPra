@@ -33,7 +33,7 @@ if __name__ == "__main__":
                                                    meta_path_file=hold_out_fold_path / "train.MetaPaths",
                                                    hold_out_path=hold_out_fold_path,
                                                    hyper_param=alpha)
-                one_hold_out_experiment.train_this_hold_out()
+                one_hold_out_experiment.train_this_hold_out(if_save_model=False)
                 valid_experiment = Validation(model_pt=one_hold_out_experiment.model_pt,
                                               query_graph_pt=graph_train,
                                               predict_graph_pt=graph_valid,
@@ -54,4 +54,8 @@ if __name__ == "__main__":
                                               meta_path_file=hold_out_fold_path / "train.MetaPaths",
                                               hold_out_path=hold_out_fold_path,
                                               hyper_param=alpha_grid[hyper_param_id])
-            train_valid_experiment.load_model_from_file()
+            train_valid_experiment.train_this_hold_out(if_save_model=True)
+            test_experiment.model_pt = train_valid_experiment.model_pt
+            test_result_tuple = test_experiment.tail_predict()
+            print(f"Hold Out {hold_out_k} Test Result:\n"
+                  f"\thit@{hit_range}'s accuracy; MR; MRR: {test_result_tuple}.")

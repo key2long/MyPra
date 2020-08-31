@@ -109,6 +109,7 @@ class ProcessedGraphManager:
         self.entity_set = set()
         self.relation_set = set()
         self.relation_pos_sample_dict = defaultdict(list)
+        self.relation_meta_paths = None
 
         self.begin_node = ""
         self.end_node = ""
