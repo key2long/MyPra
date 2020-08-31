@@ -13,11 +13,22 @@ class LogisticRegression(nn.Module):
                  query_graph_pt: ProcessedGraphManager = None):
         super(LogisticRegression, self).__init__()
         self.linear = nn.Linear(input_size, num_classes)
-        self.query_graph_pt = query_graph_pt
 
     def forward(self, x):
         output = self.linear(x)
         return torch.sigmoid(output)
+
+
+class ModelWrapper:
+    def __init__(self):
+        self.dump = 1
+
+
+class PRAModelWrapper(ModelWrapper):
+    def __init__(self, query_graph_pt: ProcessedGraphManager = None):
+        super().__init__()
+        self.relation_torch_model_dict = {}
+        self.query_graph_pt = query_graph_pt
 
     def rank_score(self,
                    head_mid: str,
@@ -28,12 +39,16 @@ class LogisticRegression(nn.Module):
                              entity_pairs=entity_pairs_1,
                              metapath=self.query_graph_pt.relation_meta_paths[relation])
         data_feature = feature.get_probs()
-        metapath_len = len(self.query_graph_pt.relation_meta_paths[relation])
-        batch_size = 1
-        pra_data = PRAData(data_feature_dict=data_feature,
-                           metapath_len=metapath_len)
-        train_loader = DataLoader(pra_data, batch_size=batch_size)
-        results = []
-        for i, (path_feature, label) in enumerate(train_loader):
-            results.append(self.forward(path_feature))
-        return results[0]
+        py_feature = data_feature[(head_mid, tail_mid)]
+        torch_feature = torch.tensor(data=py_feature,
+                                     dtype=torch.float32)
+        result = self.relation_torch_model_dict[relation].forward(torch_feature)
+        return result
+
+
+class MyModel(nn.Module):
+    def rank_score(self,
+                   head_mid: str,
+                   relation: str,
+                   tail_mid: str):
+        pass

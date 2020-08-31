@@ -7,7 +7,7 @@ from pathlib import Path
 from collections import defaultdict
 from torch.utils.data import DataLoader
 from mhyao_src.GraphManager import ProcessedGraphManager
-from mhyao_src.PRAModel import LogisticRegression
+from mhyao_src.PRAModel import LogisticRegression, PRAModelWrapper
 from temp.GetFeature import GetFeature
 from temp.data_utils import PRAData
 
@@ -16,7 +16,7 @@ class GraphExperiments:
     def __init__(self,
                  query_graph_pt: ProcessedGraphManager,
                  predict_graph_pt: ProcessedGraphManager = None,
-                 model_pt: LogisticRegression = None,
+                 model_pt: PRAModelWrapper = None,
                  hit_range: int = 10):
         self.query_graph_pt = query_graph_pt
         self.predict_graph_pt = predict_graph_pt
@@ -53,7 +53,7 @@ class GraphExperiments:
 
 class Validation(GraphExperiments):
     def __init__(self,
-                 model_pt: LogisticRegression,
+                 model_pt: PRAModelWrapper,
                  query_graph_pt: ProcessedGraphManager,
                  predict_graph_pt: ProcessedGraphManager,
                  hit_range):
@@ -92,6 +92,7 @@ class PRATrain(GraphExperiments):
         self.relation_meta_paths = defaultdict(list)
         self.alpha = hyper_param
         self.neg_pairs_path = neg_pairs_path
+        self.model_pt = PRAModelWrapper(query_graph_pt=self.query_graph_pt)
 
     def get_relation_paths(self):
         self.relation_meta_paths = defaultdict(list)
@@ -108,9 +109,9 @@ class PRATrain(GraphExperiments):
         return ProcessedGraphManager(file_path=self.neg_pairs_path).fact_list
 
     def load_model_from_file(self):
-        pass
+        raise NotImplementedError
 
-    def train_this_hold_out(self):
+    def train_this_hold_out(self, if_save_model: bool=False):
         print(f"超参alpha为{self.alpha},开始训练{self.query_graph_pt.file_path}中的三元组:")
         self.get_relation_paths()  # get all the pre-computed meta paths
         neg_pairs = self.get_neg_pairs()  # get all the negative triples
@@ -142,23 +143,24 @@ class PRATrain(GraphExperiments):
             pra_data = PRAData(data_feature_dict=data_feature_dict,
                                metapath_len=metapath_len)
             train_loader = DataLoader(pra_data, batch_size=batch_size)
-            self.model = LogisticRegression(input_size=input_size, num_classes=1)
+            self.model_pt.relation_torch_model_dict[relation] = LogisticRegression(input_size=input_size, num_classes=1)
             criterion = nn.BCELoss()
-            optimizer = optim.SGD(self.model.parameters(), lr=learning_rate)
+            optimizer = optim.SGD(self.model_pt.relation_torch_model_dict[relation].parameters(), lr=learning_rate)
 
             for epoch in range(epoch_num):
                 for i, (path_feature, label) in enumerate(train_loader):
                     optimizer.zero_grad()
-                    outputs = self.model(path_feature)
+                    outputs = self.model_pt.relation_torch_model_dict[relation](path_feature)
                     loss = criterion(outputs, label)
                     loss.backward()
                     optimizer.step()
                     if (i + 1) % 500 == 0:
                         print('\t\tEpoch: [%d/%d], Step:[%d/%d], Loss: %.4f'
                               % (epoch + 1, epoch_num, i + 1, len(pra_data) // batch_size, loss.data))
-            print(f"\t为关系{relation}保存模型.")
-            model_save_path = self.hold_out_path / 'model/'
-            if os.path.exists(model_save_path) is False:
-                os.makedirs(model_save_path)
-            model_save_path = model_save_path / (relation.replace("/", '') + f"_{self.alpha}_model.pkl")
-            torch.save(self.model.state_dict(), model_save_path)
+            if if_save_model is True:
+                print(f"\t为关系{relation}保存模型.")
+                model_save_path = self.hold_out_path / 'model/'
+                if os.path.exists(model_save_path) is False:
+                    os.makedirs(model_save_path)
+                model_save_path = model_save_path / (relation.replace("/", '') + f"_{self.alpha}_model.pkl")
+                torch.save(self.model_pt.relation_torch_model_dict[relation].state_dict(), model_save_path)
