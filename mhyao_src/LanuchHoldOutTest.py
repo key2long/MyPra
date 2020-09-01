@@ -57,4 +57,5 @@ if __name__ == "__main__":
             train_valid_experiment.train_this_hold_out(if_save_model=True)
             test_experiment.model_pt = train_valid_experiment.model_pt
             test_result_tuple = test_experiment.tail_predict()
-            print(f"Hold Out {hold_out_k} Test Result:\n")
+            print(f"Hold Out {hold_out_k} Test Result:\n"
+                  f"\thit@{hit_range}'s accuracy; MR; MRR: {test_result_tuple}.")

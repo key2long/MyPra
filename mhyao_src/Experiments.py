@@ -163,4 +163,4 @@ class PRATrain(GraphExperiments):
                 if os.path.exists(model_save_path) is False:
                     os.makedirs(model_save_path)
                 model_save_path = model_save_path / (relation.replace("/", '') + f"_{self.alpha}_model.pkl")
-
+                torch.save(self.model_pt.relation_torch_model_dict[relation].state_dict(), model_save_path)
