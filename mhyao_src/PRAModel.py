@@ -1,3 +1,5 @@
+import sys
+sys.path.append('../')
 import torch.nn as nn
 import torch
 from mhyao_src.GraphManager import ProcessedGraphManager

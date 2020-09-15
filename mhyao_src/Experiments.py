@@ -1,3 +1,5 @@
+import sys
+sys.path.append('../')
 import operator
 import torch
 import torch.optim as optim
@@ -6,8 +8,8 @@ import random, os
 from pathlib import Path
 from collections import defaultdict
 from torch.utils.data import DataLoader
-from mhyao_src.GraphManager import ProcessedGraphManager
-from mhyao_src.PRAModel import LogisticRegression, PRAModelWrapper
+from GraphManager import ProcessedGraphManager
+from PRAModel import LogisticRegression, PRAModelWrapper
 from temp.GetFeature import GetFeature
 from temp.data_utils import PRAData
 
@@ -17,7 +19,8 @@ class GraphExperiments:
                  query_graph_pt: ProcessedGraphManager,
                  predict_graph_pt: ProcessedGraphManager = None,
                  model_pt: PRAModelWrapper = None,
-                 hit_range: int = 10):
+                 hit_range: int = 10,
+                 poor_relation_set: list = None):
         self.query_graph_pt = query_graph_pt
         self.predict_graph_pt = predict_graph_pt
         self.model_pt = model_pt
@@ -25,29 +28,36 @@ class GraphExperiments:
         self.hit_percent = None
         self.MR = None
         self.MRR = None
+        self.poor_relation_set = poor_relation_set
 
     def tail_predict(self):
         hits = 0
         mr = 0
         mrr = 0
+        poor_count = 0
         for triple in self.predict_graph_pt.fact_list:
-            entity_rank_dict = {}
-            for entity in self.query_graph_pt.entity_set:
-                score = self.model_pt.rank_score(head_mid=triple[0],
-                                                 relation=triple[2],
-                                                 tail_mid=entity)
-                entity_rank_dict[(triple[0], triple[1], entity)] = score
-            rank_tail_sorted = sorted(entity_rank_dict.items(), key=operator[1], reverse=False)
-            for rank, (tail, score) in enumerate(rank_tail_sorted):
-                if triple[2] == tail:
-                    if rank < self.hit_range:
-                        hits += 1
-                    mr += rank
-                    mrr += 1 / rank
-                    break
-        self.hit_percent = hits / len(self.predict_graph_pt.fact_list)
-        self.MR = mr / len(self.predict_graph_pt.fact_list)
-        self.MRR = mrr / len(self.predict_graph_pt.fact_list)
+            if triple[2] in self.poor_relation_set:
+                poor_count += 1
+                continue
+            else:  
+                entity_rank_dict = {}
+                for entity in self.query_graph_pt.entity_set:
+                    score = self.model_pt.rank_score(head_mid=triple[0],
+                                                     relation=triple[2],
+                                                     tail_mid=entity)
+                    entity_rank_dict[(triple[0], triple[1], entity)] = score
+                rank_tail_sorted = sorted(entity_rank_dict.items(), key=operator[1], reverse=False)
+                for rank, (tail, score) in enumerate(rank_tail_sorted):
+                    if triple[2] == tail:
+                        if rank < self.hit_range:
+                            hits += 1
+                        mr += rank
+                        mrr += 1 / rank
+                        break
+        
+        self.hit_percent = hits / (len(self.predict_graph_pt.fact_list) - poor_count)
+        self.MR = mr / (len(self.predict_graph_pt.fact_list) - poor_count)
+        self.MRR = mrr / (len(self.predict_graph_pt.fact_list) - poor_count)
         return self.hit_percent, self.MR, self.MRR
 
 
@@ -56,10 +66,12 @@ class Validation(GraphExperiments):
                  model_pt: PRAModelWrapper,
                  query_graph_pt: ProcessedGraphManager,
                  predict_graph_pt: ProcessedGraphManager,
-                 hit_range):
+                 hit_range,
+                 poor_relation_set):
         super().__init__(model_pt=model_pt,
                          query_graph_pt=query_graph_pt,
-                         predict_graph_pt=predict_graph_pt)
+                         predict_graph_pt=predict_graph_pt
+                         poor_relation_set=poor_relation_set)
         self.hit_range = hit_range
 
 
@@ -68,10 +80,12 @@ class Test(GraphExperiments):
                  query_graph_pt: ProcessedGraphManager,
                  predict_graph_pt: ProcessedGraphManager,
                  hit_range,
-                 model_pt: LogisticRegression = None):
+                 model_pt: LogisticRegression = None,
+                 poor_relation_set=None):
         super().__init__(model_pt=model_pt,
                          query_graph_pt=query_graph_pt,
-                         predict_graph_pt=predict_graph_pt)
+                         predict_graph_pt=predict_graph_pt
+                         poor_relation_set=poor_relation_set)
         self.hit_range = hit_range
 
     def find_best_results(self,
@@ -93,6 +107,7 @@ class PRATrain(GraphExperiments):
         self.alpha = hyper_param
         self.neg_pairs_path = neg_pairs_path
         self.model_pt = PRAModelWrapper(query_graph_pt=self.query_graph_pt)
+        self.poor_relation_set = []
 
     def get_relation_paths(self):
         self.relation_meta_paths = defaultdict(list)
@@ -115,8 +130,10 @@ class PRATrain(GraphExperiments):
         print(f"超参alpha为{self.alpha},开始训练{self.query_graph_pt.file_path}中的三元组:")
         self.get_relation_paths()  # get all the pre-computed meta paths
         neg_pairs = self.get_neg_pairs()  # get all the negative triples
+        relation_count = 0
         for relation in self.query_graph_pt.relation_set:
-            print(f"预测关系:{relation};")
+            relation_count += 1
+            #print(f"预测关系:{relation};")
             relation_pos_pairs = self.query_graph_pt.relation_pos_sample_dict[relation]
             train_pairs_01 = []
             pos_pairs_num = len(relation_pos_pairs)
@@ -131,36 +148,42 @@ class PRATrain(GraphExperiments):
             for item in neg_pairs_01:
                 e1, e2, _ = item
                 train_pairs_01.append([e1, e2, 0])
-            feature = GetFeature(tuple_data=self.query_graph_pt.fact_list,
+            print(f"预测关系:{relation}, 是第:{relation_count}个关系, 该关系数据数量:{len(train_pairs_01)}")
+            if relation not in self.relation_meta_paths.keys():
+                self.poor_relation_set.append(relation)
+                continue
+            else:
+                feature = GetFeature(tuple_data=self.query_graph_pt.fact_list,
                                  entity_pairs=train_pairs_01,
                                  metapath=self.relation_meta_paths[relation])
-            data_feature_dict = feature.get_probs()
-            metapath_len = len(self.relation_meta_paths[relation])
-            input_size = metapath_len
-            learning_rate = 0.001
-            batch_size = 8
-            epoch_num = 2
-            pra_data = PRAData(data_feature_dict=data_feature_dict,
-                               metapath_len=metapath_len)
-            train_loader = DataLoader(pra_data, batch_size=batch_size)
-            self.model_pt.relation_torch_model_dict[relation] = LogisticRegression(input_size=input_size, num_classes=1)
-            criterion = nn.BCELoss()
-            optimizer = optim.SGD(self.model_pt.relation_torch_model_dict[relation].parameters(), lr=learning_rate)
+                data_feature_dict = feature.get_probs()
+                metapath_len = len(self.relation_meta_paths[relation])
+                input_size = metapath_len
+                learning_rate = 0.001
+                batch_size = 4
+                epoch_num = 2
+                pra_data = PRAData(data_feature_dict=data_feature_dict,
+                                   metapath_len=metapath_len)
+                train_loader = DataLoader(pra_data, batch_size=batch_size)
+                self.model_pt.relation_torch_model_dict[relation] = LogisticRegression(input_size=input_size, num_classes=1)
+                criterion = nn.BCELoss()
+                optimizer = optim.SGD(self.model_pt.relation_torch_model_dict[relation].parameters(), lr=learning_rate)
 
-            for epoch in range(epoch_num):
-                for i, (path_feature, label) in enumerate(train_loader):
-                    optimizer.zero_grad()
-                    outputs = self.model_pt.relation_torch_model_dict[relation](path_feature)
-                    loss = criterion(outputs, label)
-                    loss.backward()
-                    optimizer.step()
-                    if (i + 1) % 500 == 0:
-                        print('\t\tEpoch: [%d/%d], Step:[%d/%d], Loss: %.4f'
-                              % (epoch + 1, epoch_num, i + 1, len(pra_data) // batch_size, loss.data))
-            if if_save_model is True:
-                print(f"\t为关系{relation}保存模型.")
-                model_save_path = self.hold_out_path / 'model/'
-                if os.path.exists(model_save_path) is False:
-                    os.makedirs(model_save_path)
-                model_save_path = model_save_path / (relation.replace("/", '') + f"_{self.alpha}_model.pkl")
-                torch.save(self.model_pt.relation_torch_model_dict[relation].state_dict(), model_save_path)
+                for epoch in range(epoch_num):
+                    for i, (path_feature, label) in enumerate(train_loader):
+                        optimizer.zero_grad()
+                        outputs = self.model_pt.relation_torch_model_dict[relation](path_feature)
+                        loss = criterion(outputs, label)
+                        loss.backward()
+                        optimizer.step()
+                        if (i + 1) % 500 == 0:
+                            print('\t\tEpoch: [%d/%d], Step:[%d/%d], Loss: %.4f'
+                                  % (epoch + 1, epoch_num, i + 1, len(pra_data) // batch_size, loss.data))
+                if if_save_model is True:
+                    print(f"\t为关系{relation}保存模型.")
+                    model_save_path = self.hold_out_path / 'model/'
+                    if os.path.exists(model_save_path) is False:
+                        os.makedirs(model_save_path)
+                    model_save_path = model_save_path / (relation.replace("/", '') + f"_{self.alpha}_model.pkl")
+                    torch.save(self.model_pt.relation_torch_model_dict[relation].state_dict(), model_save_path)
+        return self.poor_relation_set
