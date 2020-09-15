@@ -1,4 +1,4 @@
-from mhyao_src.nxGraph import NxGraph
+from nxGraph import NxGraph
 from pathlib import Path
 import re
 

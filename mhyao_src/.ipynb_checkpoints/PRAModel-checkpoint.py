@@ -2,7 +2,7 @@ import sys
 sys.path.append('../')
 import torch.nn as nn
 import torch
-from mhyao_src.GraphManager import ProcessedGraphManager
+from GraphManager import ProcessedGraphManager
 from temp.GetFeature import GetFeature
 from temp.data_utils import PRAData
 from torch.utils.data import DataLoader

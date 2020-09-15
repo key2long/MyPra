@@ -70,7 +70,7 @@ class Validation(GraphExperiments):
                  poor_relation_set):
         super().__init__(model_pt=model_pt,
                          query_graph_pt=query_graph_pt,
-                         predict_graph_pt=predict_graph_pt
+                         predict_graph_pt=predict_graph_pt,
                          poor_relation_set=poor_relation_set)
         self.hit_range = hit_range
 
@@ -84,7 +84,7 @@ class Test(GraphExperiments):
                  poor_relation_set=None):
         super().__init__(model_pt=model_pt,
                          query_graph_pt=query_graph_pt,
-                         predict_graph_pt=predict_graph_pt
+                         predict_graph_pt=predict_graph_pt,
                          poor_relation_set=poor_relation_set)
         self.hit_range = hit_range
 

@@ -3,7 +3,7 @@ from tqdm import tqdm
 from pathlib import Path
 from collections import Counter, defaultdict
 from multiprocessing import Process, Pool
-from .raw_graph_utils import parse_fb15k237_data, parse_wn18rr_data, parse_yago310_data
+from raw_graph_utils import parse_fb15k237_data, parse_wn18rr_data, parse_yago310_data
 
 
 class RawGraphManager:

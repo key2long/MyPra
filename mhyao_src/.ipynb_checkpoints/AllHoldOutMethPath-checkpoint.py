@@ -1,6 +1,6 @@
 import pdb
 from pathlib import Path
-from mhyao_src.GraphManager import ProcessedGraphManager
+from GraphManager import ProcessedGraphManager
 
 
 if __name__ == "__main__":

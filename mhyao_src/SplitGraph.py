@@ -1,4 +1,4 @@
-from mhyao_src.GraphManager import FB15k237RawGraph, WN18RRRawGraph, YAGO310RawGraph
+from GraphManager import FB15k237RawGraph, WN18RRRawGraph, YAGO310RawGraph
 import os
 
 
