@@ -65,7 +65,7 @@ def one_hold_out_experiment(hold_out_id: int,
 
 if __name__ == "__main__":
     #graph_names = ["fb15k237", "WN18RR", "YAGO3_10"]
-    graph_names = ['fb15k237', "WN18RR"]
+    graph_names = ['fb15k237']
     processed_path = Path("../DATA/processed")
     hold_out_fold = "hold_out_"
     files_suffix = ["train", "valid", "test"]

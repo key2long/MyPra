@@ -164,7 +164,7 @@ class PRATrain(GraphExperiments):
                 input_size = metapath_len
                 learning_rate = 0.001
                 batch_size = 4
-                epoch_num = 2
+                epoch_num = 1
                 pra_data = PRAData(data_feature_dict=data_feature_dict,
                                    metapath_len=metapath_len)
                 train_loader = DataLoader(pra_data, batch_size=batch_size)
