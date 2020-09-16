@@ -126,8 +126,10 @@ class PRATrain(GraphExperiments):
     def load_model_from_file(self):
         raise NotImplementedError
 
-    def train_this_hold_out(self, if_save_model: bool=False):
-        print(f"超参alpha为{self.alpha},开始训练{self.query_graph_pt.file_path}中的三元组:")
+    def train_this_hold_out(self, if_save_model: bool=False,
+                            hold_out_id: int=None):
+        if hold_out_id is not None and hold_out_id == 0: # 只有主进程输出信息
+            print(f"超参alpha为{self.alpha},开始训练{self.query_graph_pt.file_path}中的三元组:")
         self.get_relation_paths()  # get all the pre-computed meta paths
         neg_pairs = self.get_neg_pairs()  # get all the negative triples
         relation_count = 0
@@ -148,7 +150,8 @@ class PRATrain(GraphExperiments):
             for item in neg_pairs_01:
                 e1, e2, _ = item
                 train_pairs_01.append([e1, e2, 0])
-            print(f"预测关系:{relation}, 是第:{relation_count}个关系, 该关系数据数量:{len(train_pairs_01)}")
+            if hold_out_id is not None and hold_out_id == 0:  # 只有主进程输出信息
+                print(f"预测关系:{relation}, 是第:{relation_count}个关系, 该关系数据数量:{len(train_pairs_01)}")
             if relation not in self.relation_meta_paths.keys():
                 self.poor_relation_set.append(relation)
                 continue
@@ -176,7 +179,7 @@ class PRATrain(GraphExperiments):
                         loss = criterion(outputs, label)
                         loss.backward()
                         optimizer.step()
-                        if (i + 1) % 500 == 0:
+                        if (i + 1) % 500 == 0 and hold_out_id is not None and hold_out_id == 0:  # 只有主进程输出信息
                             print('\t\tEpoch: [%d/%d], Step:[%d/%d], Loss: %.4f'
                                   % (epoch + 1, epoch_num, i + 1, len(pra_data) // batch_size, loss.data))
                 if if_save_model is True:
