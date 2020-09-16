@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from collections import defaultdict
+from tqdm import tqdm
 
 
 class Node:
@@ -50,21 +51,36 @@ class GetFeature:
                     prob += (1/len(self.nodes[begin].info[relation_path[0]]))*self._prob(item, end, relation_path[1:])
                 return prob
 
-    def get_probs(self):
-        for i, data in enumerate(self.entity_pairs):
-            [node1, node2, flag] = data
-            node1 = node1.replace('thing$', '')
-            if node1 not in self.nodes.keys():
-                print('发现非法实体%s' % node1)
-                continue
-            else:
-                node2 = node2.replace('thing$', '')
-                if flag == 1:
-                    self.data_dict_feature[node1, node2].append(1)
+    def get_probs(self, hold_out_id: int=None):
+        if hold_out_id is not None and hold_out_id == 0:
+            for data in tqdm(self.entity_pairs):
+                [node1, node2, flag] = data
+                node1 = node1.replace('thing$', '')
+                if node1 not in self.nodes.keys():
+                    continue
                 else:
-                    self.data_dict_feature[node1, node2].append(0)
-                for path in self.metapath:
-                    tem_prob = self._prob(node1, node2, path)
-                    self.data_dict_feature[node1, node2].append(tem_prob)
-            # print('第%d个数据结束\n' % i)
+                    node2 = node2.replace('thing$', '')
+                    if flag == 1:
+                        self.data_dict_feature[node1, node2].append(1)
+                    else:
+                        self.data_dict_feature[node1, node2].append(0)
+                    for path in self.metapath:
+                        tem_prob = self._prob(node1, node2, path)
+                        self.data_dict_feature[node1, node2].append(tem_prob)
+        else:
+            for data in self.entity_pairs:
+                [node1, node2, flag] = data
+                node1 = node1.replace('thing$', '')
+                if node1 not in self.nodes.keys():
+                    continue
+                else:
+
+                    node2 = node2.replace('thing$', '')
+                    if flag == 1:
+                        self.data_dict_feature[node1, node2].append(1)
+                    else:
+                        self.data_dict_feature[node1, node2].append(0)
+                    for path in self.metapath:
+                        tem_prob = self._prob(node1, node2, path)
+                        self.data_dict_feature[node1, node2].append(tem_prob)
         return self.data_dict_feature
