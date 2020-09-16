@@ -17,7 +17,7 @@ def one_hold_out_experiment(hold_out_id: int,
     valid_file_name = name + "." + str(hold_out_id) + "." + files_suffix[1] + "." + "graph"
     graph_valid = ProcessedGraphManager(file_path=hold_out_fold_path / valid_file_name,
                                         if_add_reverse_relation=False)
-    if len(graph_valid.entity_set_difference(graph_train)) != 0:
+    if len(graph_valid.entity_set_difference(graph_train)) != 0 and hold_out_id == 0: # 只有主进程输出信息
         print(f"There are {len(graph_valid.entity_set_difference(graph_train))}"
               f"entities that are missing in the training dataset.")
     # 载入可能的超参数
@@ -30,15 +30,16 @@ def one_hold_out_experiment(hold_out_id: int,
                                            meta_path_file=hold_out_fold_path / "train.MetaPaths",
                                            hold_out_path=hold_out_fold_path,
                                            hyper_param=alpha)
-        poor_relation_set = one_hold_out_experiment.train_this_hold_out(if_save_model=False)
+        poor_relation_set = one_hold_out_experiment.train_this_hold_out(if_save_model=False, hold_out_id=hold_out_id)
         valid_experiment = Validation(model_pt=one_hold_out_experiment.model_pt,
                                       query_graph_pt=graph_train,
                                       predict_graph_pt=graph_valid,
                                       hit_range=hit_range,
                                       poor_relation_set=poor_relation_set)
         result_tuple = valid_experiment.tail_predict()
-        print(f"Validating hyper-parameter [{id/len(alpha_grid)}]: "
-              f"\thit@{hit_range}'s accuracy; MR; MRR: {result_tuple}.")
+        if  hold_out_id == 0: # 只有主进程输出信息
+            print(f"Validating hyper-parameter [{id/len(alpha_grid)}]: "
+                  f"\thit@{hit_range}'s accuracy; MR; MRR: {result_tuple}.")
         valid_results.append((id, result_tuple))
     test_file_name = name + "." + str(hold_out_id) + "." + files_suffix[2] + "." + "graph"
     graph_test = ProcessedGraphManager(file_path=hold_out_fold_path / test_file_name,
@@ -56,18 +57,19 @@ def one_hold_out_experiment(hold_out_id: int,
     test_experiment.poor_relation_set = poor_relation_set
     test_experiment.model_pt = train_valid_experiment.model_pt
     test_result_tuple = test_experiment.tail_predict()
-    print(f"Hold Out {hold_out_id} Test Result:\n"
-          f"\thit@{hit_range}'s accuracy; MR; MRR: {test_result_tuple}.")
+    if hold_out_id == 0: # 只有主进程输出信息
+        print(f"Hold Out {hold_out_id} Test Result:\n"
+              f"\thit@{hit_range}'s accuracy; MR; MRR: {test_result_tuple}.")
     return test_result_tuple
 
 
 if __name__ == "__main__":
     #graph_names = ["fb15k237", "WN18RR", "YAGO3_10"]
-    graph_names = ['fb15k237']
+    graph_names = ['fb15k237', "WN18RR"]
     processed_path = Path("../DATA/processed")
     hold_out_fold = "hold_out_"
     files_suffix = ["train", "valid", "test"]
-    split_k = 10
+    split_k = 2
     hit_range = 10
     for name in graph_names:
         process_pool = Pool(processes=split_k)
