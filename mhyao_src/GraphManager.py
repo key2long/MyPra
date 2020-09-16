@@ -114,7 +114,7 @@ class ProcessedGraphManager:
         self.begin_node = ""
         self.end_node = ""
         self.max_depth = 2
-        self.min_hit = 5
+        self.min_hit = 1
         self.relation_of_blocked_edge = ""
         self.path = []
         self.all_paths = []

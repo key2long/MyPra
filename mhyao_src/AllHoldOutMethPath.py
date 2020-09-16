@@ -4,8 +4,10 @@ from GraphManager import ProcessedGraphManager
 
 
 if __name__ == "__main__":
-    graph_names = ["fb15k237", "WN18RR", "YAGO3_10"]
+    # graph_names = ["fb15k237", "WN18RR", "YAGO3_10"]
+    graph_names = ["fb15k237"]
     processed_path = Path("../DATA/processed")
+    # processed_path = Path("../DATA/processed/fb15k237/test_case") # 做测试代码时使用
     hold_out_fold = "hold_out_"
     files_suffix = ["train", "valid"]
     split_k = 10
