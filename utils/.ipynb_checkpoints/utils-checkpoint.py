@@ -44,13 +44,14 @@ class GenerateData:
                 if e2 not in train_entity:
                     train_entity.append(e2)
         for item in train_pairs:  # 随机替换已有训练集三元组的头实体或者尾实体
+            tem_item = item[:]
             pr = random.random()  # 计算替换头实体或者是替换尾实体的概率
             tem_entity = random.sample(train_entity, 1)[0]  # 在所有实体中随机选取待替换实体
             if pr > 0.5:
-                item[0] = tem_entity
+                tem_item[0] = tem_entity
             else:
-                item[1] = tem_entity
-            raw_neg_pairs.append(item)  # 将随机替换后的三元组作为待用的负样本
+                tem_item[1] = tem_entity
+            raw_neg_pairs.append(tem_item)  # 将随机替换后的三元组作为待用的负样本
         self.neg_pairs = raw_neg_pairs
         with open('./raw_neg_pairs.txt', 'w') as f:
             for item in raw_neg_pairs:
@@ -67,18 +68,11 @@ class GenerateData:
                 [e1, e2, r] = data.strip().split('\t')
                 train_pairs.append([e1, e2, r])
         for item in neg_pairs:
-            for item2 in train_pairs:
-                if item == item2:
-                    false_neg.append(item)
-                    break
-                else:
-                    true_neg.append(item)
+            if item in train_pairs:
+                false_neg.append(item)
+            else:
+                true_neg.append(item)
         with open('./true_neg.txt', 'w') as f:
             for item in true_neg:
-                [e1, e2, r] = item
-                f.write(e1 + '\t' + e2 + '\t' + r + '\n')
-
-        with open('./true_neg.txt', 'w') as f:
-            for item in false_neg:
                 [e1, e2, r] = item
                 f.write(e1 + '\t' + e2 + '\t' + r + '\n')
