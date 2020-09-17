@@ -2,6 +2,7 @@ import sys
 sys.path.append('../')
 import torch.nn as nn
 import torch
+import pdb
 from GraphManager import ProcessedGraphManager
 from temp.GetFeature import GetFeature
 from temp.data_utils import PRAData
@@ -36,12 +37,12 @@ class PRAModelWrapper(ModelWrapper):
                    head_mid: str,
                    relation: str,
                    tail_mid: str):
-        entity_pairs_1 = [head_mid, tail_mid, 1]
+        entity_pairs_1 = [[head_mid, tail_mid, 1]]
         feature = GetFeature(tuple_data=self.query_graph_pt.fact_list,
                              entity_pairs=entity_pairs_1,
                              metapath=self.query_graph_pt.relation_meta_paths[relation])
         data_feature = feature.get_probs()
-        py_feature = data_feature[(head_mid, tail_mid)]
+        py_feature = data_feature[(head_mid, tail_mid)][1:]
         torch_feature = torch.tensor(data=py_feature,
                                      dtype=torch.float32)
         result = self.relation_torch_model_dict[relation].forward(torch_feature)
