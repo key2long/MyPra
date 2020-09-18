@@ -1,9 +1,7 @@
 import os
 import random
 
-
 class GenerateData:
-
     def __init__(self, train_path, relation_path, train_entity_path):
         self.train_path = train_path  # 训练数据集三元组存储路径
         self.relation_path = relation_path  # 训练数据集relation的存储路径
