@@ -12,6 +12,11 @@ from GraphManager import ProcessedGraphManager
 from PRAModel import LogisticRegression, PRAModelWrapper
 from temp.GetFeature import GetFeature
 from temp.data_utils import PRAData
+from tqdm import tqdm
+from multiprocessing import Pool
+import pdb
+import concurrent.futures
+
 
 
 class GraphExperiments:
@@ -29,24 +34,72 @@ class GraphExperiments:
         self.MR = None
         self.MRR = None
         self.poor_relation_set = poor_relation_set
-
+        
+    def get_batch_tail_score(self, triple, batch_entity):
+        print(f'I am here 38')
+        entity_rank_dict = {}
+        for entity in tqdm(batch_entity):
+            score = self.model_pt.rank_score(head_mid=triple[0],
+                                             relation=triple[2],
+                                             tail_mid=entity)
+            entity_rank_dict[(triple[0], triple[1], entity)] = score
+        return entity_rank_dict
+    
+    
     def tail_predict(self):
         hits = 0
         mr = 0
         mrr = 0
         poor_count = 0
-        for triple in self.predict_graph_pt.fact_list:
+        process_num = 10
+        batch_query_entity_len = len(self.query_graph_pt.entity_set) // process_num
+        '''
+        batch_predict_entity_len = len(self.predict_graph_pt.fact_list) // process_num
+        predcit_pool = Pool(processes=process_num)
+        for i in range(processes=process_num):
+            if i == process_num - 1:
+                batch_triple = self.predict_graph_pt.fact_list[i*batch_predict_entity_len:]
+            else:
+                batch_triple = self.predict_graph_pt.fact_list[i*batch_predict_entity_len:(i+1)*batch_predict_entity_len-1]
+        '''    
+        #print(f"I am here 62 line!!!!!!!!!")
+
+        
+        
+        for triple in tqdm(self.predict_graph_pt.fact_list):
             if triple[2] in self.poor_relation_set:
                 poor_count += 1
                 continue
-            else:  
+            else:
                 entity_rank_dict = {}
-                for entity in self.query_graph_pt.entity_set:
-                    score = self.model_pt.rank_score(head_mid=triple[0],
-                                                     relation=triple[2],
-                                                     tail_mid=entity)
-                    entity_rank_dict[(triple[0], triple[1], entity)] = score
-                rank_tail_sorted = sorted(entity_rank_dict.items(), key=operator[1], reverse=False)
+                #print(f"I am here 69 line!!!!!!!!!")
+                '''
+                with concurrent.futures.ProcessPoolExecutor() as executor:
+                    print(f"I am here 69 line!!!!!!!!!")
+                    entity_rank_dict.update(executor.map(get_batch_tail_score, args=(triple,
+                                                                                     self.query_graph_pt.entity_set)))
+                '''    
+                query_pool = Pool(processes=process_num)
+                entity_list = list(self.query_graph_pt.entity_set)
+                for i in range(process_num):
+                    #print(f"I am here 72!!!!!!!!!")
+                    if i == process_num - 1:
+                        batch_entity = entity_list[i*batch_query_entity_len:]
+                    else:
+                        #print(f"I am here 76!!!!!!!!!")
+                        batch_entity = entity_list[i*batch_query_entity_len:(i+1)*batch_query_entity_len-1]
+                    #print(f"I am here 78!!!!!!!!!")
+                    entity_rank_dict.update(query_pool.apply_async(get_batch_tail_score,
+                                                                   args=(self,
+                                                                         triple, 
+                                                                         batch_entity)))
+                print(f"I am here 81!!!!!!!!!")
+                query_pool.close()
+                query_pool.join()
+                pdb.set_trace()
+                
+               
+                rank_tail_sorted = sorted(entity_rank_dict.items(), key=lambda item: item[1], reverse=False)
                 for rank, (tail, score) in enumerate(rank_tail_sorted):
                     if triple[2] == tail:
                         if rank < self.hit_range:
@@ -54,7 +107,6 @@ class GraphExperiments:
                         mr += rank
                         mrr += 1 / rank
                         break
-        
         self.hit_percent = hits / (len(self.predict_graph_pt.fact_list) - poor_count)
         self.MR = mr / (len(self.predict_graph_pt.fact_list) - poor_count)
         self.MRR = mrr / (len(self.predict_graph_pt.fact_list) - poor_count)
@@ -126,8 +178,10 @@ class PRATrain(GraphExperiments):
     def load_model_from_file(self):
         raise NotImplementedError
 
-    def train_this_hold_out(self, if_save_model: bool=False):
-        print(f"超参alpha为{self.alpha},开始训练{self.query_graph_pt.file_path}中的三元组:")
+    def train_this_hold_out(self, if_save_model: bool=False,
+                            hold_out_id: int=None):
+        if hold_out_id is not None and hold_out_id == 0: # 只有主进程输出信息
+            print(f"超参alpha为{self.alpha},开始训练{self.query_graph_pt.file_path}中的三元组:")
         self.get_relation_paths()  # get all the pre-computed meta paths
         neg_pairs = self.get_neg_pairs()  # get all the negative triples
         relation_count = 0
@@ -148,7 +202,8 @@ class PRATrain(GraphExperiments):
             for item in neg_pairs_01:
                 e1, e2, _ = item
                 train_pairs_01.append([e1, e2, 0])
-            print(f"预测关系:{relation}, 是第:{relation_count}个关系, 该关系数据数量:{len(train_pairs_01)}")
+            if hold_out_id is not None and hold_out_id == 0:  # 只有主进程输出信息
+                print(f"预测关系:{relation}, 是第:{relation_count}个关系, 该关系数据数量:{len(train_pairs_01)}")
             if relation not in self.relation_meta_paths.keys():
                 self.poor_relation_set.append(relation)
                 continue
@@ -156,12 +211,12 @@ class PRATrain(GraphExperiments):
                 feature = GetFeature(tuple_data=self.query_graph_pt.fact_list,
                                  entity_pairs=train_pairs_01,
                                  metapath=self.relation_meta_paths[relation])
-                data_feature_dict = feature.get_probs()
+                data_feature_dict = feature.get_probs(hold_out_id)
                 metapath_len = len(self.relation_meta_paths[relation])
                 input_size = metapath_len
                 learning_rate = 0.001
                 batch_size = 4
-                epoch_num = 2
+                epoch_num = 1
                 pra_data = PRAData(data_feature_dict=data_feature_dict,
                                    metapath_len=metapath_len)
                 train_loader = DataLoader(pra_data, batch_size=batch_size)
@@ -172,14 +227,14 @@ class PRATrain(GraphExperiments):
                 for epoch in range(epoch_num):
                     for i, (path_feature, label) in enumerate(train_loader):
                         optimizer.zero_grad()
-                        outputs = self.model_pt.relation_torch_model_dict[relation](path_feature)
+                        outputs = self.model_pt.relation_torch_model_dict[relation](path_feature).squeeze(dim=1)
                         loss = criterion(outputs, label)
                         loss.backward()
                         optimizer.step()
-                        if (i + 1) % 500 == 0:
+                        if (i + 1) % 500 == 0 and hold_out_id is not None and hold_out_id == 0:  # 只有主进程输出信息
                             print('\t\tEpoch: [%d/%d], Step:[%d/%d], Loss: %.4f'
                                   % (epoch + 1, epoch_num, i + 1, len(pra_data) // batch_size, loss.data))
-                if if_save_model is True:
+                if if_save_model is True and hold_out_id is not None and hold_out_id == 0:
                     print(f"\t为关系{relation}保存模型.")
                     model_save_path = self.hold_out_path / 'model/'
                     if os.path.exists(model_save_path) is False:

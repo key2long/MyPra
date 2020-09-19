@@ -13,6 +13,10 @@ from PRAModel import LogisticRegression, PRAModelWrapper
 from temp.GetFeature import GetFeature
 from temp.data_utils import PRAData
 from tqdm import tqdm
+from multiprocessing import Pool
+import pdb
+import concurrent.futures
+
 
 
 class GraphExperiments:
@@ -30,23 +34,71 @@ class GraphExperiments:
         self.MR = None
         self.MRR = None
         self.poor_relation_set = poor_relation_set
-
+        
+    def get_batch_tail_score(self, triple, batch_entity):
+        print(f'I am here 38')
+        entity_rank_dict = {}
+        for entity in tqdm(batch_entity):
+            score = self.model_pt.rank_score(head_mid=triple[0],
+                                             relation=triple[2],
+                                             tail_mid=entity)
+            entity_rank_dict[(triple[0], triple[1], entity)] = score
+        return entity_rank_dict
+    
+    
     def tail_predict(self):
         hits = 0
         mr = 0
         mrr = 0
         poor_count = 0
-        for triple in tqdm(self.predict_graph_pt.fact_list[0:1]):
+        process_num = 10
+        batch_query_entity_len = len(self.query_graph_pt.entity_set) // process_num
+        '''
+        batch_predict_entity_len = len(self.predict_graph_pt.fact_list) // process_num
+        predcit_pool = Pool(processes=process_num)
+        for i in range(processes=process_num):
+            if i == process_num - 1:
+                batch_triple = self.predict_graph_pt.fact_list[i*batch_predict_entity_len:]
+            else:
+                batch_triple = self.predict_graph_pt.fact_list[i*batch_predict_entity_len:(i+1)*batch_predict_entity_len-1]
+        '''    
+        #print(f"I am here 62 line!!!!!!!!!")
+
+        
+        
+        for triple in tqdm(self.predict_graph_pt.fact_list):
             if triple[2] in self.poor_relation_set:
                 poor_count += 1
                 continue
             else:
                 entity_rank_dict = {}
-                for entity in tqdm(self.query_graph_pt.entity_set):
-                    score = self.model_pt.rank_score(head_mid=triple[0],
-                                                     relation=triple[2],
-                                                     tail_mid=entity)
-                    entity_rank_dict[(triple[0], triple[1], entity)] = score
+                #print(f"I am here 69 line!!!!!!!!!")
+                '''
+                with concurrent.futures.ProcessPoolExecutor() as executor:
+                    print(f"I am here 69 line!!!!!!!!!")
+                    entity_rank_dict.update(executor.map(get_batch_tail_score, args=(triple,
+                                                                                     self.query_graph_pt.entity_set)))
+                '''    
+                query_pool = Pool(processes=process_num)
+                entity_list = list(self.query_graph_pt.entity_set)
+                for i in range(process_num):
+                    #print(f"I am here 72!!!!!!!!!")
+                    if i == process_num - 1:
+                        batch_entity = entity_list[i*batch_query_entity_len:]
+                    else:
+                        #print(f"I am here 76!!!!!!!!!")
+                        batch_entity = entity_list[i*batch_query_entity_len:(i+1)*batch_query_entity_len-1]
+                    #print(f"I am here 78!!!!!!!!!")
+                    entity_rank_dict.update(query_pool.apply_async(get_batch_tail_score,
+                                                                   args=(self,
+                                                                         triple, 
+                                                                         batch_entity)))
+                print(f"I am here 81!!!!!!!!!")
+                query_pool.close()
+                query_pool.join()
+                pdb.set_trace()
+                
+               
                 rank_tail_sorted = sorted(entity_rank_dict.items(), key=lambda item: item[1], reverse=False)
                 for rank, (tail, score) in enumerate(rank_tail_sorted):
                     if triple[2] == tail:
