@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+import pdb
 
 class MhYaoPRA(nn.Module):
     """This model requires all relation are indexed. The first relation's classifier's parameter is the first row vec.
@@ -28,7 +28,9 @@ class MhYaoPRA(nn.Module):
                  feature_size: int,
                  relation_num: int):
         super(MhYaoPRA, self).__init__()
-        classifiers = torch.randn((relation_num, feature_size), requires_grad=True, dtype=torch.float64)
+        classifiers = torch.rand((relation_num, feature_size), requires_grad=True, dtype=torch.float32)
+        # w = torch.empty((relation_num, feature_size), requires_grad=True, dtype=torch.float32)
+        # classifiers = torch.nn.init.kaiming_normal_(w)
         self.classifiers = torch.nn.Parameter(classifiers)
         self.sigmod = nn.Sigmoid()
         self.register_parameter("classifiers", self.classifiers)
@@ -42,6 +44,8 @@ class MhYaoPRA(nn.Module):
         :return: results
         """
         rid = int(batch_features_with_rid[0, 0, 0])
+        # print(type(batch_features_with_rid[0, :, 1:]), type(self.classifiers[rid, :]))
+        # pdb.set_trace()
         scores = torch.matmul(batch_features_with_rid[0, :, 1:], self.classifiers[rid, :])
         results = self.sigmod(scores)
         return results

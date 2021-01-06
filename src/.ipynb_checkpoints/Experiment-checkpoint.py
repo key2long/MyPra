@@ -2,7 +2,6 @@
 import argparse
 import random
 import os
-import time
 import numpy as np
 import torch
 import torch.nn as nn
@@ -16,6 +15,10 @@ from pathlib import Path
 from ProcessedGraph import ProcessedGraph
 from model import MhYaoPRA
 from utils import handle_error, get_train_probs, MhYaoPRAData, get_predict_probs
+import sys
+sys.path.append("../FeatureBuffer")
+from FeatureBuffer import ValidFeatureBuffer
+import time 
 
 
 class GraphExperiments:
@@ -52,11 +55,13 @@ class GraphExperiments:
                  meta_path_file: str = None,
                  args_pt: argparse = None,
                  predict_graph_pt: ProcessedGraph = None,
+                 valid_feature_buffer_pt: ValidFeatureBuffer=None,
                  model_pt: MhYaoPRA = None):
         self.query_graph_pt = query_graph_pt
         self.hold_out_fold_path = hold_out_fold_path
         self.meta_path_file = meta_path_file
         self.predict_graph_pt = predict_graph_pt
+        self.valid_feature_buffer_pt = valid_feature_buffer_pt
         self.model_pt = model_pt
         self.args_pt = args_pt
 
@@ -75,7 +80,7 @@ class GraphExperiments:
         """
         relation_meta_path_dict = defaultdict(list)
         max_meta_path_len = 4
-        for length in range(2,max_meta_path_len+1):
+        for length in range(2, max_meta_path_len+1):
             meta_path_file_name = self.hold_out_fold_path / (self.meta_path_file + "." + str(length))
             with open(meta_path_file_name, "r") as f:
                 datas = f.readlines()
@@ -123,13 +128,10 @@ class GraphExperiments:
         # 根据gpu数量，将valid_triple_list划分为多个batch。每个batch只有gpu_num个triple。
         # 这样每个gpu就只运算一个triple生成的feature_matrix。保护了内存。
         batch_triple_list = self._my_valid_data_partition(valid_triple_list=valid_triple_list,
-                                                   batch_size=self.args_pt.gpu_num_per_hold)
+                                                          batch_size=self.args_pt.gpu_num_per_hold)
         hit_rank_list = []
         for batch_triple in tqdm(batch_triple_list):
-            start = time.time()
             data, label = self._get_valid_feature_matrix(triple_list=batch_triple)
-            end = time.time()
-            print('Running time: %s Seconds' % (end - start))
             valid_dataset = MhYaoPRAData(data=data, label=label)
             valid_sampler = torch.utils.data.DistributedSampler(dataset=valid_dataset,
                                                                 num_replicas=self.args_pt.gpu_num_per_hold,
@@ -145,27 +147,100 @@ class GraphExperiments:
                 results = model(feature_matrix_with_rid)
                 hit_rank, tmp_results = self._calculate_hit_mr_mrr(results, label)
                 hit_rank_list.append(hit_rank)
-                print(f"process_rank/hit_rank/tmp_results:{process_rank}/{hit_rank}/{tmp_results}.")
-        hits = 0
+                # print(f"process_rank/hit_rank/tmp_results:{process_rank}/{hit_rank}/{tmp_results}.")
+        hits_1 = 0
+        hits_3 = 0
+        hits_10 = 0
         mr = 0
         mrr = 0
+        mrr_list = []
+        mr_list = []
         for hit_rank in hit_rank_list:
-            if hit_rank <= self.args_pt.hit_range:
-                hits += 1
-                mr += hit_rank
-                mrr += 1 / hit_rank
-        print(f"process_rank/hit_percent/MR/MRR:"
-              f"{process_rank}/{hits/len(hit_rank_list)}/"
-              f"{mr/len(hit_rank_list)}/{mrr/len(hit_rank_list)}.")
+            if hit_rank > 50 or hit_rank==0:
+                continue
+            if hit_rank <= self.args_pt.hit_range[0]:
+                hits_1 += 1
+            if hit_rank <= self.args_pt.hit_range[1]:
+                hits_3 += 1
+            if hit_rank <= self.args_pt.hit_range[2]:
+                hits_10 += 1            
+            mr += hit_rank
+            mr_list.append(hit_rank)
+            mrr += 1 / hit_rank
+            mrr_list.append(1/hit_rank)
+            # print(mrr_list, mr_list)
+        rank_len = len(hit_rank_list)
+        valid_rank_log_path = self.args_pt.train_log_path / "valid_rank.log"
+        # if os.path.exists(valid_rank_log_path):
+        #     with open(valid_rank_log_path, "a") as f:
+        #         t=time.gmtime()
+        #         log_time = time.strftime("%Y-%m-%d  %H:%M:%S",t)
+        #         count = 0
+        #         log_info = ''
+        #         for item_rank in mrr_list:
+        #             log_info = log_info + str(item_rank) + '\t'
+        #             count += 1
+        #             if count % 8 == 0:
+        #                 log_info = log_info + '\n'
+        #         log_rank_info = (f"This experiment logs on:{log_time}\n{log_info}")
+        #         f.write(log_rank_info)
+        # else:
+        #     with open(valid_rank_log_path, 'w') as f:
+        #         t=time.gmtime()
+        #         log_time = time.strftime("%Y-%m-%d  %H:%M:%S",t)
+        #         count = 0
+        #         log_info = ''
+        #         for item_rank in mrr_list:
+        #             log_info = log_info + str(item_rank) + '\t'
+        #             count += 1
+        #             if count % 8 == 0:
+        #                 log_info = log_info + '\n'
+        #         log_rank_info = (f"This experiment logs on:{log_time}\n{log_info}")
+        #         f.write(log_rank_info)
+        #
+        # valid_result_log_path = self.args_pt.train_log_path / "valid_result.log"
+        # if os.path.exists(valid_result_log_path):
+        #     with open(valid_result_log_path, "a") as f:
+        #         t=time.gmtime()
+        #         log_time = time.strftime("%Y-%m-%d  %H:%M:%S",t)
+        #         log_info = (f"This experiment logs on:{log_time}\t"
+        #                     f"Datasets is:{self.args_pt.graph_names[0]}\n"
+        #                     f"hit@10 is:{hits_10/rank_len}, hit@3 is:{hits_3/rank_len}, hit@1 is:{hits_1/rank_len},"
+        #                     f"MR is:{mr/rank_len}, MRR is:{mrr/rank_len}"
+        #                     f"本次实验共{rank_len}个样本。\n\n")
+        #         f.write(log_info)
+        # else:
+        #     with open(valid_result_log_path, 'w') as f:
+        #         t=time.gmtime()
+        #         log_time = time.strftime("%Y-%m-%d  %H:%M:%S",t)
+        #         log_info = (f"This experiment logs on:{log_time}\t"
+        #                     # f"Datasets is:{self.args_pt.graph_names[0]}\n"
+        #                     # f"hit@10 is:{hits_10/rank_len}, hit@3 is:{hits_3/rank_len}, hit@1 is:{hits_1/rank_len},"
+        #                     # f"MR is:{mr/rank_len}, MRR is:{mrr/rank_len}"
+        #                     f"本次实验共{rank_len}个样本。\n\n")
+        #         f.write(log_info)
+        if rank_len == 0:
+            print('rank_len is zero')
+        else:
+            print(f"Datasets is:{self.args_pt.graph_names[0]}\n"
+            f"hit@10 is:{hits_10/rank_len}, hit@3 is:{hits_3/rank_len}, hit@1 is:{hits_1/rank_len},"
+            f"MR is:'{mr/rank_len}, MRR is:{mrr/rank_len},"
+            f"本次实验共{rank_len}个样本。\n")
 
     def _calculate_hit_mr_mrr(self,
                               results: torch.tensor,
                               label: torch.tensor):
         tmp_results = results.detach().cpu().numpy().tolist()
-        tmp_label = int(label.detach().cpu().numpy().tolist()[0])
-        score = tmp_results[tmp_label]
-        tmp_results = sorted(tmp_results, reverse=True)
-        hit_rank = tmp_results.index(score)
+        tmp_label = int(label.detach().cpu().numpy().tolist()[0][0])
+        candidate_entity_id_list = [int(id) for id in label.detach().cpu().numpy().tolist()[0][1:]]
+        if tmp_label not in candidate_entity_id_list:
+            return len(candidate_entity_id_list), tmp_results[0:10]
+        score = tmp_results[candidate_entity_id_list.index(tmp_label)]
+        results_with_id = [(tmp_results[i], candidate_entity_id_list[i]) for i in range(len(tmp_results))]
+        results_with_id = sorted(results_with_id, key=lambda item: item[0], reverse=True)
+        hit_rank = results_with_id.index((score, tmp_label))
+        # tmp_results = sorted(tmp_results, reverse=True)
+        # hit_rank = tmp_results.index(score)
         return hit_rank + 1, tmp_results[0:10]
 
     def _get_valid_feature_matrix(self,
@@ -174,17 +249,21 @@ class GraphExperiments:
         valid_label_list = []
         for triple in triple_list:
             head_mid, relation, tail_mid = triple[0], triple[1], triple[2]
+            key = head_mid + "#" + relation + "#" + tail_mid
+            # 查询当前key是否在feature buffer中有记录，没有则跳过
+            dense_feature_matrix = self.valid_feature_buffer_pt.get_feature_from_csv(triple_as_key=key)
+            if dense_feature_matrix is False:
+                continue
             if relation not in self.relation_id_list:
                 continue
             relation_id = self.relation_id_list.index(relation)
-            one_triple_with_all_tail_entity = self._substitute_tail_entity(triple)
-            feature_matrix_with_rid = get_predict_probs(query_graph_pt=self.query_graph_pt,
-                                                        rid=relation_id,
-                                                        one_triple_with_all_tail_entity=one_triple_with_all_tail_entity,
-                                                        args_pt=self.args_pt,
-                                                        relation_meta_path=self.relation_meta_path_dict[relation])
+            row_num = dense_feature_matrix.shape[0]
+            col_num = dense_feature_matrix.shape[1] + 1 - 1
+            feature_matrix_with_rid = torch.zeros((row_num, col_num))
+            feature_matrix_with_rid[:, 0] = relation_id
+            feature_matrix_with_rid[:, 1:] = dense_feature_matrix[:, 1:]
             tail_label_idx = self.entity_id_list.index(tail_mid)
-            tmp_label = torch.from_numpy(np.array(tail_label_idx))
+            tmp_label = torch.from_numpy(np.array([tail_label_idx] + dense_feature_matrix[:, 0].numpy().tolist()))
             valid_data_list.append(feature_matrix_with_rid)
             valid_label_list.append(tmp_label)
         return valid_data_list, valid_label_list
@@ -224,18 +303,20 @@ class PRAValid(GraphExperiments):
                  meta_path_file: str,
                  args_pt: argparse,
                  predict_graph_pt: ProcessedGraph,
+                 valid_feature_buffer_pt: ValidFeatureBuffer,
                  model_pt: MhYaoPRA):
         super(PRAValid, self).__init__(query_graph_pt=query_graph_pt,
                                        hold_out_fold_path=hold_out_path,
                                        meta_path_file=meta_path_file,
                                        args_pt=args_pt,
-                                       predict_graph_pt=predict_graph_pt)
+                                       predict_graph_pt=predict_graph_pt,
+                                       valid_feature_buffer_pt=valid_feature_buffer_pt)
         self.model_pt = model_pt
 
     def tail_predict(self,
                      hold_out_rank: int):
-        os.environ['MASTER_ADDR'] = '172.17.0.4'
-        os.environ['MASTER_PORT'] = str(hold_out_rank + 8887)
+        os.environ['MASTER_ADDR'] = '172.17.0.2'
+        os.environ['MASTER_PORT'] = str(hold_out_rank + 8886)
         print(f"开始验证模型。")
         mp.spawn(fn=self._tail_predict,
                  args=(hold_out_rank,),
@@ -302,7 +383,7 @@ class PRATrain(GraphExperiments):
         # Print necessary info.
         if hold_out_rank is not None and hold_out_rank == 0:
             print(f"超参为{self.hyper_param},开始训练{self.query_graph_pt.file_path}中的三元组")
-        # 将原始三元组转化为对应的torch特征矩阵
+        # 将原始三元组转化为对应的torch特征矩阵 这里删除训练步骤时需要注释掉
         # train_feature_matrix_and_labels = self._get_feature_matrix_and_labels(hold_out_rank=hold_out_rank)
         # relation_num = len(train_feature_matrix_and_labels[0])
         # 确定feature_size的长度
@@ -314,7 +395,7 @@ class PRATrain(GraphExperiments):
         # print(f"fsz:{self.args_pt.feature_size};feature_matrix:{train_feature_matrix_and_labels[0][1][0,:]}")
         # 定义模型
         self.model_pt = MhYaoPRA(self.args_pt.feature_size, relation_num)
-        # os.environ['MASTER_ADDR'] = '172.17.0.4'
+        # os.environ['MASTER_ADDR'] = '172.17.0.2'
         # os.environ['MASTER_PORT'] = str(hold_out_rank + 8887)
         # print(f"开始训练数据。")
         # mp.spawn(fn=self.train_on_each_gpu,
@@ -362,8 +443,8 @@ class PRATrain(GraphExperiments):
         loss_per_epo_list = []
         for epo in range(self.args_pt.epoch):
             for feature_matrix_with_rid, label in valid_loader:
-                feature_matrix_with_rid = feature_matrix_with_rid.cuda(gpu_id)
-                label = label.cuda(gpu_id).squeeze()
+                feature_matrix_with_rid = feature_matrix_with_rid.cuda(gpu_id).float()
+                label = label.cuda(gpu_id).squeeze().float()
                 results = model(feature_matrix_with_rid)
                 loss = criterion(results, label)
                 loss_per_epo_list.append([int(feature_matrix_with_rid[0, 0, 0]), loss.item()])

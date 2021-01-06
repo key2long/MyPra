@@ -3,8 +3,8 @@ import sys
 import argparse
 import torch
 import numpy as np
-import multiprocessing
 import multiprocessing.pool
+from pathlib import Path
 from torch.utils.data import Dataset
 from ProcessedGraph import ProcessedGraph
 from multiprocessing import Pool
@@ -423,11 +423,11 @@ def get_predict_probs(query_graph_pt: ProcessedGraph,
                     p_1:[r_1, r_2, r_3,...]
     '''
     feature_size = args_pt.feature_size
-    feature_matrix_with_rid = torch.from_numpy(np.zeros(shape=[len(one_triple_with_all_tail_entity), 1 + feature_size]))
+    feature_matrix_with_rid = torch.from_numpy(np.zeros(shape=[len(one_triple_with_all_tail_entity), 2 + feature_size]))
     feature_matrix_with_rid[:, 0] = rid
     row = 0
-    for item in tqdm(one_triple_with_all_tail_entity):
-        [h_entity, relation, t_entity] = item
+    for item in one_triple_with_all_tail_entity:
+        [h_entity, relation, t_entity, t_entity_id, t_entity_dis] = item
         tmp_feature_vec = []
         meta_path_count = 0
         for id, path in enumerate(relation_meta_path):
@@ -442,7 +442,76 @@ def get_predict_probs(query_graph_pt: ProcessedGraph,
         if meta_path_count < feature_size:
             for i in range(0, feature_size - meta_path_count - 1):
                 tmp_feature_vec.append(0.0)
-        feature_matrix_with_rid[row, 1:] = torch.from_numpy(np.array(tmp_feature_vec))
+        feature_matrix_with_rid[row, 2:] = torch.from_numpy(np.array(tmp_feature_vec))
+        feature_matrix_with_rid[row, 1] = t_entity_id
         row += 1
     # print(f"head_mid/relation:{one_triple_with_all_tail_entity[0][0]}\{one_triple_with_all_tail_entity[0][1]} is done.")
     return feature_matrix_with_rid
+
+def load_meta_path(hold_out_path: Path,
+                   args: argparse):
+    relation_meta_path_dict = defaultdict(list)
+    for length in range(args.min_mp_length, args.max_mp_length + 1):
+        meta_path_file_name = hold_out_path / ("train.MetaPath." + str(length))
+        with open(meta_path_file_name, "r") as f:
+            datas = f.readlines()
+            for data in datas:
+                data = data.strip("\n").split("\t")
+                relation = data[2]
+                meta_path = data[4:]
+                relation_meta_path_dict[relation].append(meta_path)
+        f.close()
+    return relation_meta_path_dict
+
+
+def batch_partition(triple_list: list,
+                    all_batch_num: int):
+    data_len = len(triple_list)
+    batch_size = int(data_len / all_batch_num)
+    batch_list = []
+    for i in range(all_batch_num):
+        batch_list.append(triple_list[i * batch_size:(i + 1) * batch_size])
+    if data_len % batch_size != 0:
+        batch_list.append(triple_list[all_batch_num * batch_size:])
+    return batch_list
+
+
+def substitute_tail_entity(triple: list,
+                           entity_id_list: list):
+    one_triple_with_all_tail_entity = []
+    for entity_id, tail_mid in enumerate(entity_id_list):
+        one_triple_with_all_tail_entity.append([triple[0], triple[1], tail_mid])
+    return one_triple_with_all_tail_entity
+
+
+def screen_tail_entity(triple: list,
+                       entity_id_list: list,
+                       query_graph: ProcessedGraph,
+                       k_nearest: int):
+    target_tail_vec = query_graph.get_target_tail_vec(triple[0], triple[2])
+    if target_tail_vec is not None:
+        local_id_mid_dis_list = []
+        for entity_id, tail_mid in enumerate(entity_id_list):
+            parsed_tail_mid = ".".join(tail_mid.split('/')[1:])
+            tail_embedding = query_graph.get_entity2vec(parsed_tail_mid)
+            if tail_embedding is not None:
+                local_id_mid_dis_list.append([triple[0], triple[1], tail_mid,
+                                              entity_id, torch.norm(target_tail_vec - tail_embedding)])
+            else:
+                # print(f"Entity {tail_mid} is missing in KGE.")
+                local_id_mid_dis_list.append([triple[0], triple[1], tail_mid,
+                                              entity_id, 0.0])
+        one_triple_with_screened_tail_entity = sorted(local_id_mid_dis_list, key=lambda item: item[-1])[:k_nearest]
+        return one_triple_with_screened_tail_entity
+    else:
+        print(f"Not screened at all for head_relation:{triple[0], triple[2]}.")
+        one_triple_with_all_tail_entity = []
+        for entity_id, tail_mid in enumerate(entity_id_list):
+            one_triple_with_all_tail_entity.append([triple[0], triple[1], tail_mid])
+        return one_triple_with_all_tail_entity
+
+
+def timer(start, end):
+    hours, rem = divmod(end-start, 3600)
+    minutes, seconds = divmod(rem, 60)
+    return (hours, minutes, seconds)

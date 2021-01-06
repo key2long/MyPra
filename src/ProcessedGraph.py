@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
+import torch
+import numpy as np
 from collections import defaultdict
 
 
@@ -31,14 +33,80 @@ class ProcessedGraph:
         _report_statistic_info: Print the statistical information of this graph data.
     """
     def __init__(self,
-                 file_path: str):
+                 file_path: str,
+                 entity_embedding_path: str = "entity2vec.bin",
+                 entity_embedding_id_path: str = "entity2id.txt",
+                 relation_embedding_path: str = "relation2vec.bin",
+                 relation_embedding_id_path: str = "relation2id.txt"):
         self.file_path = file_path
+        self.entity2vec_path = entity_embedding_path
+        self.entity2id_path = entity_embedding_id_path
+        self.parsed_entity2vec = False
+        self.relation2vec_path = relation_embedding_path
+        self.relation2id_path = relation_embedding_id_path
+        self.parsed_relation2vec = False
         self._check_file()
         self.triple_list = []
         self.relation_pos_samp_dict = defaultdict(list)
         self.adjacency_dict = defaultdict(list)
         self.relation_adj_dict = defaultdict()
         self._parse_triple()
+
+    def load_entity2vec(self):
+        if self.parsed_entity2vec is not True:
+            self.parsed_entity2vec = True
+            self.entity2vec = torch.from_numpy(np.memmap(self.entity2vec_path,
+                                                         dtype='float32',
+                                                         mode='r')).reshape([-1, 50])
+            self.entity2id_dict = {}
+            with open(self.entity2id_path, "r") as f:
+                lines = f.readlines()
+                for line in lines[1:]:
+                    line = line.strip().split('\t')
+                    entity_mid = line[0]
+                    entity_id = int(line[1])
+                    self.entity2id_dict[entity_mid] = entity_id
+
+    def load_relation2vec(self):
+        if self.parsed_relation2vec is not True:
+            self.parsed_relation2vec = True
+            self.relation2vec = torch.from_numpy(np.memmap(self.relation2vec_path,
+                                                           dtype='float32',
+                                                           mode='r')).reshape([-1, 50])
+            self.relation2id_dict = {}
+            with open(self.relation2id_path, "r") as f:
+                lines = f.readlines()
+                for line in lines:
+                    line = line.strip().split('\t')
+                    relation_mid = line[0]
+                    relation_id = int(line[1])
+                    self.relation2id_dict[relation_mid] = relation_id
+
+    def get_entity2vec(self, mid: str):
+        self.load_entity2vec()
+        if mid in self.entity2id_dict:
+            return self.entity2vec[self.entity2id_dict[mid], :]
+        else:
+            return None
+
+    def get_relation2vce(self, relation: str):
+        self.load_relation2vec()
+        if relation in self.relation2id_dict:
+            return self.relation2vec[self.relation2id_dict[relation], :]
+        else:
+            return None
+
+    def get_target_tail_vec(self, head_mid: str,
+                            relation: str):
+        head_mid = ".".join(head_mid.split('/')[1:])
+        head_vec = self.get_entity2vec(mid=head_mid)
+        relation = ".".join(relation.split('/')[1:])
+        relation_vec = self.get_entity2vec(mid=relation)
+        if head_vec is not None and relation_vec is not None:
+            target_tail_vec = head_vec + relation_vec
+            return target_tail_vec
+        else:
+            return None
 
     def _check_file(self):
         """Check if the file_path exists and print help information.
